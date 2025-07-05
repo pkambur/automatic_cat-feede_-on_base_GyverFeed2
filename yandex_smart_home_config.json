@@ -1,0 +1,97 @@
+{
+  "skill_id": "gyverfeed_skill",
+  "oauth_token": "your_oauth_token_here",
+  "devices": [
+    {
+      "id": "gyverfeed_001",
+      "name": "Автокормушка",
+      "description": "Автоматическая кормушка для питомцев",
+      "room": "Кухня",
+      "type": "devices.types.smart_device",
+      "capabilities": [
+        {
+          "type": "devices.capabilities.on_off",
+          "retrievable": true,
+          "parameters": {
+            "split": false
+          }
+        },
+        {
+          "type": "devices.capabilities.range",
+          "retrievable": true,
+          "parameters": {
+            "instance": "volume",
+            "unit": "unit.percent",
+            "range": {
+              "min": 1,
+              "max": 100,
+              "precision": 1
+            }
+          }
+        }
+      ],
+      "properties": [
+        {
+          "type": "devices.properties.float",
+          "retrievable": true,
+          "parameters": {
+            "instance": "temperature",
+            "unit": "unit.temperature.celsius"
+          }
+        },
+        {
+          "type": "devices.properties.event",
+          "retrievable": false,
+          "parameters": {
+            "instance": "vibration",
+            "events": [
+              {
+                "value": "tilt"
+              },
+              {
+                "value": "fall"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "commands": {
+    "on_off": {
+      "on": "Включить кормление",
+      "off": "Выключить кормление"
+    },
+    "volume": {
+      "set": "Установить размер порции",
+      "increase": "Увеличить порцию",
+      "decrease": "Уменьшить порцию"
+    }
+  },
+  "voice_commands": [
+    "Алиса, включи автокормушку",
+    "Алиса, выключи автокормушку", 
+    "Алиса, покорми питомца",
+    "Алиса, дай корм",
+    "Алиса, запусти кормление",
+    "Алиса, останови кормление",
+    "Алиса, установи порцию на 50 процентов",
+    "Алиса, увеличь порцию",
+    "Алиса, уменьши порцию",
+    "Алиса, статус автокормушки",
+    "Алиса, что с кормушкой"
+  ],
+  "api_endpoints": {
+    "discovery": "/yandex/discovery",
+    "query": "/yandex/query", 
+    "action": "/yandex/action"
+  },
+  "webhook_url": "http://your_esp8266_ip/yandex/",
+  "security": {
+    "token_validation": true,
+    "ip_whitelist": [],
+    "rate_limiting": {
+      "requests_per_minute": 60
+    }
+  }
+} 
