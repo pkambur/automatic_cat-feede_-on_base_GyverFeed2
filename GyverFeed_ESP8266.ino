@@ -122,7 +122,7 @@ void connectToWiFi() {
 void setupAP() {
   Serial.println("Запуск точки доступа для настройки...");
   WiFi.mode(WIFI_AP);
-  WiFi.softAP("GyverFeed_Setup", "12345678");
+  WiFi.softAP("AvtoKormushka", "12345678");
   
   Serial.print("AP IP адрес: ");
   Serial.println(WiFi.softAPIP());
