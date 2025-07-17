@@ -52,9 +52,9 @@
 // =========== НЕ ТРОГАЙ ============
 #include <Arduino.h>
 
-#ifndef nullptr
-#define nullptr NULL
-#endif
+//#ifndef nullptr
+//#define nullptr NULL
+//#endif
 
 // флаг макро
 #define _EB_setFlag(x) (flags |= 1 << x)
