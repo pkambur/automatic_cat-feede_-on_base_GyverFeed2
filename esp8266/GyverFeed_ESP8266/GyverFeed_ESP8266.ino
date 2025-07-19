@@ -6,6 +6,7 @@
   - Веб-интерфейс для настройки
   
   AlexGyver, AlexGyver Technologies, 2024
+  Исправлен и дополнен: 17 июля 2025
 */
 
 #include <ESP8266WiFi.h>
@@ -18,16 +19,28 @@
 #define WIFI_SSID "YOUR_WIFI_SSID"        // Имя WiFi сети
 #define WIFI_PASS "YOUR_WIFI_PASSWORD"    // Пароль WiFi сети
 #define DEVICE_NAME "Автокормушка"        // Имя устройства для Алисы
-#define YANDEX_TOKEN "YOUR_YANDEX_TOKEN"  // Токен Яндекс Smart Home
+#define YANDEX_TOKEN "YOUR_YANDEX_TOKEN"  // Токен Яндекс Smart Home (замените на реальный)
 
 // Пины для управления кормлением
-#define FEED_PIN 2                        // Пин для сигнала кормления (подключить к Arduino)
-#define LED_PIN 2                         // Встроенный LED для индикации
+#define FEED_PIN 0                        // Пин для сигнала кормления (GPIO0, подтянуть к 3.3 В через 10 кОм)
+#define LED_PIN 2                         // Встроенный LED для индикации (GPIO2)
 
 // ========= ПЕРЕМЕННЫЕ ==========
 ESP8266WebServer server(80);
 WiFiClient client;
 HTTPClient http;
+
+void loadSettings();
+void saveSettings();
+void registerDevice();
+void setupWebServer();
+void connectToWiFi();
+void setupAP();
+void startFeeding();
+void stopFeeding();
+void handleDiscovery();
+void handleQuery();
+void handleAction();
 
 bool isConnected = false;
 bool isFeeding = false;
@@ -40,7 +53,7 @@ struct Settings {
   char password[64];
   char deviceName[32];
   char yandexToken[128];
-  int feedAmount;
+  int feedAmount;  // Количество корма в процентах или импульсах
 } settings;
 
 // ========= ФУНКЦИИ ==========
@@ -79,6 +92,14 @@ void loop() {
     stopFeeding();
   }
   
+  // Проверка состояния Wi-Fi
+  if (isConnected && WiFi.status() != WL_CONNECTED) {
+    Serial.println("Потеряно соединение с WiFi, попытка переподключения...");
+    isConnected = false;
+    digitalWrite(LED_PIN, LOW);
+    connectToWiFi();
+  }
+  
   // Мигание LED при подключении
   if (isConnected) {
     static unsigned long lastBlink = 0;
@@ -113,9 +134,19 @@ void connectToWiFi() {
     Serial.println(WiFi.localIP());
     digitalWrite(LED_PIN, HIGH);
   } else {
-    Serial.println("\nОшибка подключения к WiFi!");
-    // Запуск точки доступа для настройки
+    Serial.println("\nОшибка подключения к WiFi! Переход в режим AP.");
     setupAP();
+    // Периодическая попытка подключения (1 минута)
+    for (int i = 0; i < 12; i++) {
+      delay(5000);
+      if (WiFi.status() == WL_CONNECTED) {
+        isConnected = true;
+        digitalWrite(LED_PIN, HIGH);
+        setupWebServer();
+        registerDevice();
+        break;
+      }
+    }
   }
 }
 
@@ -134,85 +165,38 @@ void setupWebServer() {
   // Главная страница
   server.on("/", HTTP_GET, []() {
     String html = R"(
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>GyverFeed Настройки</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .container { max-width: 600px; margin: 0 auto; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type="text"], input[type="password"] { 
-            width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; 
-        }
-        button { 
-            background: #007cba; color: white; padding: 10px 20px; 
-            border: none; border-radius: 4px; cursor: pointer; 
-        }
-        button:hover { background: #005a87; }
-        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
-        .success { background: #d4edda; color: #155724; }
-        .error { background: #f8d7da; color: #721c24; }
-    </style>
-</head>
-<body>
-    <div class="container">
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>GyverFeed ESP8266</title>
+        <meta charset="UTF-8">
+      </head>
+      <body>
         <h1>GyverFeed ESP8266</h1>
-        <div class="status success">Статус: )" + (isConnected ? "Подключен к WiFi" : "Не подключен") + R"(</div>
-        
-        <h2>Настройки WiFi</h2>
-        <form action="/save" method="post">
-            <div class="form-group">
-                <label>SSID:</label>
-                <input type="text" name="ssid" value=")" + String(settings.ssid) + R"(" required>
-            </div>
-            <div class="form-group">
-                <label>Пароль:</label>
-                <input type="password" name="password" value=")" + String(settings.password) + R"(" required>
-            </div>
-            
-            <h2>Настройки Яндекс</h2>
-            <div class="form-group">
-                <label>Имя устройства:</label>
-                <input type="text" name="deviceName" value=")" + String(settings.deviceName) + R"(" required>
-            </div>
-            <div class="form-group">
-                <label>Токен Яндекс Smart Home:</label>
-                <input type="text" name="yandexToken" value=")" + String(settings.yandexToken) + R"(" required>
-            </div>
-            
-            <h2>Настройки кормления</h2>
-            <div class="form-group">
-                <label>Размер порции (шагов):</label>
-                <input type="number" name="feedAmount" value=")" + String(settings.feedAmount) + R"(" min="1" max="1000" required>
-            </div>
-            
-            <button type="submit">Сохранить настройки</button>
+        <p>Статус: %STATUS%</p>
+        <form action="/save" method="POST">
+          <label>WiFi SSID: <input type="text" name="ssid" value="%SSID%"></label><br>
+          <label>WiFi Password: <input type="password" name="password" value="%PASS%"></label><br>
+          <label>Device Name: <input type="text" name="deviceName" value="%DEVICENAME%"></label><br>
+          <label>Yandex Token: <input type="text" name="yandexToken" value="%YANDEXTOKEN%"></label><br>
+          <label>Feed Amount: <input type="number" name="feedAmount" value="%FEEDAMOUNT%" min="1" max="1000"></label><br>
+          <input type="submit" value="Сохранить">
         </form>
-        
-        <h2>Управление</h2>
-        <button onclick="feed()">Покормить сейчас</button>
-        <button onclick="restart()">Перезагрузить</button>
-    </div>
-    
-    <script>
-        function feed() {
-            fetch('/feed', {method: 'POST'})
-                .then(response => response.text())
-                .then(data => alert(data));
-        }
-        
-        function restart() {
-            if(confirm('Перезагрузить устройство?')) {
-                fetch('/restart', {method: 'POST'});
-            }
-        }
-    </script>
-</body>
-</html>
+        <form action="/feed" method="POST">
+          <input type="submit" value="Покормить сейчас">
+        </form>
+        <form action="/restart" method="POST">
+          <input type="submit" value="Перезагрузить">
+        </form>
+      </body>
+      </html>
     )";
+    html.replace("%STATUS%", isConnected ? "Подключен к WiFi" : "Не подключен");
+    html.replace("%SSID%", String(settings.ssid));
+    html.replace("%PASS%", String(settings.password));
+    html.replace("%DEVICENAME%", String(settings.deviceName));
+    html.replace("%YANDEXTOKEN%", String(settings.yandexToken));
+    html.replace("%FEEDAMOUNT%", String(settings.feedAmount));
     server.send(200, "text/html", html);
   });
   
@@ -258,10 +242,18 @@ void registerDevice() {
   if (!isConnected) return;
   
   Serial.println("Регистрация устройства в Яндекс Smart Home...");
-  
-  // Здесь должна быть логика регистрации устройства
-  // В реальном проекте нужно использовать Yandex Smart Home API
-  Serial.println("Устройство зарегистрировано!");
+  http.begin(client, "https://api.iot.yandex.net/v1.0/devices/register");
+  http.addHeader("Authorization", "Bearer " + String(settings.yandexToken));
+  http.addHeader("Content-Type", "application/json");
+  String payload = "{\"id\":\"gyverfeed_001\",\"name\":\"" + String(settings.deviceName) + "\"}";
+  int httpCode = http.POST(payload);
+  if (httpCode == 200) {
+    Serial.println("Устройство зарегистрировано!");
+  } else {
+    Serial.print("Ошибка регистрации: ");
+    Serial.println(httpCode);
+  }
+  http.end();
 }
 
 void handleDiscovery() {
@@ -293,7 +285,6 @@ void handleDiscovery() {
       }]
     }
   })";
-  
   server.send(200, "application/json", response);
 }
 
@@ -320,14 +311,19 @@ void handleQuery() {
       }]
     }
   })";
-  
   server.send(200, "application/json", response);
 }
 
 void handleAction() {
   String body = server.arg("plain");
-  DynamicJsonDocument doc(1024);
-  deserializeJson(doc, body);
+  DynamicJsonDocument doc(2048); // Увеличен размер буфера
+  DeserializationError error = deserializeJson(doc, body);
+  if (error) {
+    Serial.print("Ошибка парсинга JSON: ");
+    Serial.println(error.c_str());
+    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
   
   String deviceId = doc["payload"]["devices"][0]["id"].as<String>();
   String capabilityType = doc["payload"]["devices"][0]["capabilities"][0]["type"].as<String>();
@@ -359,7 +355,6 @@ void handleAction() {
       }]
     }
   })";
-  
   server.send(200, "application/json", response);
 }
 
@@ -372,10 +367,14 @@ void startFeeding() {
   isFeeding = true;
   lastFeedTime = millis();
   
-  // Отправка сигнала на Arduino
-  digitalWrite(FEED_PIN, HIGH);
-  delay(100);
-  digitalWrite(FEED_PIN, LOW);
+  // Отправка сигнала на Arduino с учётом количества корма
+  int pulses = settings.feedAmount / 100; // Пример: 100 = 1 импульс, 200 = 2 импульса
+  for (int i = 0; i < pulses; i++) {
+    digitalWrite(FEED_PIN, HIGH);
+    delay(100);
+    digitalWrite(FEED_PIN, LOW);
+    delay(100);
+  }
   
   // Мигание LED во время кормления
   for (int i = 0; i < 10; i++) {
@@ -400,13 +399,13 @@ void loadSettings() {
   EEPROM.get(0, settings);
   
   // Проверка валидности данных
-  if (settings.feedAmount < 1 || settings.feedAmount > 1000) {
+  if (strlen(settings.ssid) == 0 || settings.feedAmount < 1 || settings.feedAmount > 1000) {
     // Загрузка настроек по умолчанию
     strcpy(settings.ssid, WIFI_SSID);
     strcpy(settings.password, WIFI_PASS);
     strcpy(settings.deviceName, DEVICE_NAME);
     strcpy(settings.yandexToken, YANDEX_TOKEN);
-    settings.feedAmount = 100;
+    settings.feedAmount = 100; // Значение по умолчанию
     saveSettings();
   }
 }
@@ -415,4 +414,4 @@ void saveSettings() {
   EEPROM.put(0, settings);
   EEPROM.commit();
   Serial.println("Настройки сохранены в EEPROM");
-} 
+}
