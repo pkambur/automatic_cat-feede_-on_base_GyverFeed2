@@ -1,14 +1,3 @@
-/*
-  ESP8266 модуль для управления автокормушкой через Яндекс Станцию
-  - Подключение к WiFi
-  - Yandex Smart Home API
-  - Управление кормлением через Алису
-  - Веб-интерфейс для настройки
-  
-  AlexGyver, AlexGyver Technologies, 2024
-  Исправлен и дополнен: 17 июля 2025
-*/
-
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPClient.h>
@@ -66,7 +55,7 @@ struct Settings {
 // ========= ФУНКЦИИ ==========
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600); // Синхронизация с Arduino
   Serial.println("\n=== GyverFeed ESP8266 ===");
   
   // Инициализация пинов
@@ -294,9 +283,11 @@ void startFeeding() {
   time_t nowT = time(nullptr);
   strftime(lastFeedTimeStr, sizeof(lastFeedTimeStr), "%Y-%m-%dT%H:%M:%SZ", gmtime(&nowT));
   mqttPublishStatus("feeding");
-
-  // Держим пин в LOW всё время кормления
-  digitalWrite(FEED_PIN, LOW);
+  
+  // Отправляем команду на Arduino через Serial
+  Serial.print("FEED:"); // Используем FEED:[количество] для передачи feedAmount
+  Serial.println(settings.feedAmount);
+  
   // Мигание LED во время кормления
   for (int i = 0; i < 10; i++) {
     digitalWrite(LED_PIN, HIGH);
@@ -310,7 +301,6 @@ void stopFeeding() {
   if (!isFeeding) return;
   Serial.println("Остановка кормления");
   isFeeding = false;
-  digitalWrite(FEED_PIN, HIGH); // Возвращаем в HIGH
   mqttPublishStatus("idle");
 }
 

@@ -79,10 +79,13 @@ void loop() {
   if (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');
     cmd.trim();
+    Serial.print("Получена команда: "); Serial.println(cmd); // Отладочный вывод
     if (cmd == "FEED") {
+      Serial.println("Запуск кормления (FEED)");
       feed();
     } else if (cmd.startsWith("FEED:")) {
       int amount = cmd.substring(5).toInt();
+      Serial.print("Запуск кормления с количеством: "); Serial.println(amount); // Отладочный вывод
       if (amount > 0) {
         int oldAmount = feedAmount;
         feedAmount = amount;
@@ -92,7 +95,7 @@ void loop() {
     }
   }
 
-  // Проверка сигнала от ESP8266 для запуска кормления (если используется)
+  // Проверка сигнала от ESP8266 для запуска кормления (не используется)
   static bool espPrev = HIGH;
   bool espNow = digitalRead(ESP_FEED_PIN);
   if (espPrev == HIGH && espNow == LOW) { // фронт LOW
